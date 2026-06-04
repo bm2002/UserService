@@ -1,0 +1,27 @@
+# Build results
+bin/
+obj/
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Visual Studio
+.vs/
+.vscode/
+
+# Rider
+.idea/
+
+# Roslyn / tooling output
+tools/
+roslyn/
+**/Roslyn45/
+
+# config transforms (часто генерятся)
+*.xdt
+
+# logs
+*.log
+
+.github/copilot-instructions.md
