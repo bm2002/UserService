@@ -1,3 +1,6 @@
 <Solution>
-  <Project Path="UserServiceWeb/UserServiceWeb.csproj" />
+  <Project Path="UserService.Application/UserService.Application.csproj" Id="5ff5fe90-b08e-48aa-8e15-2efef325e46a" />
+  <Project Path="UserService.Domain/UserService.Domain.csproj" Id="515549b7-a90d-414e-85b6-40d650c50c60" />
+  <Project Path="UserService.Infrastructure/UserService.Infrastructure.csproj" Id="b8123723-9d59-4d5b-97d5-6cb5253b5f30" />
+  <Project Path="UserServiceWeb/UserService.Web.csproj" />
 </Solution>
