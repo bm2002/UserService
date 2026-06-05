@@ -1,0 +1,33 @@
+{
+  "name": "userservice-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "postgres",
+    "database.dbname": "user_service",
+    "topic.prefix": "cdc",
+    "plugin.name": "pgoutput",
+    "slot.name": "userservice_new_slot",
+    "table.include.list": "public.outbox_messages",
+
+    "tombstones.on.delete": "false",
+
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.type": "event_type",
+    "transforms.outbox.table.field.payload": "payload",
+
+    // ЖЕСТКИЙ ХАРДКОД ИМЕНИ ТОПИКА:
+    "transforms.outbox.route.topic.replacement": "users.events",
+    "transforms.outbox.route.by.field": "id",
+
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter"
+  }
+}

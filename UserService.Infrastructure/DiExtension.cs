@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using UserService.Application.Abstractions;
+using UserService.Application.Options;
 using UserService.Domain.Repositories;
 using UserService.Infrastructure.Data;
 using UserService.Infrastructure.Kafka;
@@ -27,6 +28,7 @@ public static class DiExtension
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.Configure<KafkaSettings>(configuration.GetSection(KafkaSettings.SectionName));
+        services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
 
         services.AddSingleton<IProducer<string, string>>(sp => {
             KafkaSettings settings = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
@@ -34,7 +36,14 @@ public static class DiExtension
             return new ProducerBuilder<string, string>(config).Build();
         });
 
-        services.AddHostedService<OutboxProcessor>(); // ← отсутствовало
+        AppSettings appSettings = configuration
+            .GetSection(AppSettings.SectionName)
+            .Get<AppSettings>() ?? new AppSettings(); 
+
+        if (!appSettings.UseDebezium)
+        {
+            services.AddHostedService<OutboxProcessor>(); 
+        }
 
         return services;
     }
