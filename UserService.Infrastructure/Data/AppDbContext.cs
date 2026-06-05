@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using UserService.Domain.Entities;
 using UserService.Domain.Repositories;
+using UserService.Infrastructure.Outbox;
 
 namespace UserService.Infrastructure.Data;
 
@@ -12,6 +13,7 @@ public sealed class AppDbContext : DbContext, IUnitOfWork
 
     public DbSet<User> Users => Set<User>();
     public DbSet<BalanceHistory> BalanceHistories => Set<BalanceHistory>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -76,6 +78,38 @@ public sealed class AppDbContext : DbContext, IUnitOfWork
                   .WithMany()
                   .HasForeignKey(b => b.UserId)
                   .HasConstraintName("fk_balance_histories_users");
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("outbox_messages");
+
+            entity.HasKey(o => o.Id);
+
+            entity.Property(o => o.Id)
+                  .HasColumnName("id");
+
+            entity.Property(o => o.EventType)
+                  .HasColumnName("event_type")
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            entity.Property(o => o.Payload)
+                  .HasColumnName("payload")
+                  .IsRequired();
+
+            entity.Property(o => o.CreatedAt)
+                  .HasColumnName("created_at")
+                  .IsRequired();
+
+            entity.Property(o => o.ProcessedAt)
+                  .HasColumnName("processed_at");
+
+            entity.Property(o => o.Error)
+                  .HasColumnName("error");
+
+            entity.HasIndex(o => o.ProcessedAt)
+                  .HasDatabaseName("ix_outbox_messages_processed_at");
         });
     }
 }

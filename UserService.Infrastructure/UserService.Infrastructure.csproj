@@ -7,14 +7,18 @@
   </PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Confluent.Kafka" Version="2.6.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.*" />
 		<PackageReference Include="EFCore.NamingConventions" Version="8.*" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.*" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.*" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.8" />
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.*" />
 	</ItemGroup>
 
 
 	<ItemGroup>
+    <ProjectReference Include="..\UserService.Application\UserService.Application.csproj" />
     <ProjectReference Include="..\UserService.Domain\UserService.Domain.csproj" />
   </ItemGroup>
 

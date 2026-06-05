@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
+using UserService.Application.Abstractions;
 using UserService.Application.Dtos;
+using UserService.Application.Events;
 using UserService.Application.Options;
 using UserService.Domain.Entities;
 using UserService.Domain.Exceptions;
@@ -13,17 +15,20 @@ public sealed class UserAppService : IUserService
     private readonly IBalanceHistoryRepository m_balanceHistoryRepository;
     private readonly IUnitOfWork m_unitOfWork;
     private readonly IOptions<AppSettings> m_settings;
+    private readonly IOutboxWriter m_outboxWriter;
 
     public UserAppService(
         IUserRepository userRepository,
         IBalanceHistoryRepository balanceHistoryRepository,
         IUnitOfWork unitOfWork,
-        IOptions<AppSettings> settings)
+        IOptions<AppSettings> settings,
+        IOutboxWriter outboxWriter)
     {
         this.m_userRepository = userRepository;
         this.m_balanceHistoryRepository = balanceHistoryRepository;
         this.m_unitOfWork = unitOfWork;
         this.m_settings = settings;
+        this.m_outboxWriter = outboxWriter;
     }
 
     public async Task<User> CreateUserAsync(UserDto dto, CancellationToken cancellation)
@@ -51,8 +56,7 @@ public sealed class UserAppService : IUserService
 
         user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
 
-        BalanceHistory history = BalanceHistory.Create(user.Id, dto.Delta, user.Balance);
-        await this.m_balanceHistoryRepository.AddAsync(history, cancellation);
+        await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
 
         await this.m_unitOfWork.SaveChangesAsync(cancellation);
     }
@@ -62,10 +66,7 @@ public sealed class UserAppService : IUserService
         cancellation.ThrowIfCancellationRequested();
 
         List<UpdateBalanceDto> dtoList = dtos.ToList();
-        List<Guid> ids = dtoList
-            .Select(x => x.UserId)
-            .Distinct()
-            .ToList();
+        List<Guid> ids = dtoList.Select(x => x.UserId).Distinct().ToList();
         IReadOnlyList<User> users = await this.m_userRepository.GetByIdsAsync(ids, cancellation);
 
         Dictionary<Guid, User> userMap = users.ToDictionary(u => u.Id);
@@ -79,8 +80,7 @@ public sealed class UserAppService : IUserService
 
             user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
 
-            BalanceHistory history = BalanceHistory.Create(user.Id, dto.Delta, user.Balance);
-            await this.m_balanceHistoryRepository.AddAsync(history, cancellation);
+            await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
         }
 
         await this.m_unitOfWork.SaveChangesAsync(cancellation);
@@ -108,5 +108,31 @@ public sealed class UserAppService : IUserService
                 h.BalanceAfter,
                 h.ChangedAt))
             .ToList();
+    }
+
+    private async Task RegisterBalanceChangeAsync(
+        User user,
+        decimal delta,
+        CancellationToken cancellation)
+    {
+        BalanceHistory history =
+            BalanceHistory.Create(
+                user.Id,
+                delta,
+                user.Balance);
+
+        await m_balanceHistoryRepository.AddAsync(
+            history,
+            cancellation);
+
+        await m_outboxWriter.WriteAsync(
+            new UserBalanceChangedEvent {
+                UserId = user.Id,
+                FullName = user.FullName,
+                Balance = user.Balance,
+                Delta = delta,
+                ChangedAt = DateTime.UtcNow
+            },
+            cancellation);
     }
 }
