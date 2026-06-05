@@ -16,11 +16,11 @@ public sealed class User
 
     private User(string fullName, DateOnly birthDate, string birthPlace)
     {
-        Id = Guid.NewGuid();
-        FullName = fullName;
-        BirthDate = birthDate;
-        BirthPlace = birthPlace;
-        Balance = 0m;
+        this.Id = Guid.NewGuid();
+        this.FullName = fullName;
+        this.BirthDate = birthDate;
+        this.BirthPlace = birthPlace;
+        this.Balance = 0m;
     }
 
     public static User Create(string fullName, DateOnly birthDate, string birthPlace)

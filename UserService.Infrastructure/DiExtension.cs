@@ -17,6 +17,7 @@ public static class DiExtension
             options.UseNpgsql(configuration.GetConnectionString("UserService")));
 
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IBalanceHistoryRepository, BalanceHistoryRepository>();
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<AppDbContext>());
 
         return services;

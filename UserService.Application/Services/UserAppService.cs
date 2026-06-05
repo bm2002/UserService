@@ -10,14 +10,18 @@ namespace UserService.Application.Services;
 public sealed class UserAppService : IUserService
 {
     private readonly IUserRepository m_userRepository;
+    private readonly IBalanceHistoryRepository m_balanceHistoryRepository;
     private readonly IUnitOfWork m_unitOfWork;
     private readonly IOptions<AppSettings> m_settings;
 
-    public UserAppService(IUserRepository userRepository,
+    public UserAppService(
+        IUserRepository userRepository,
+        IBalanceHistoryRepository balanceHistoryRepository,
         IUnitOfWork unitOfWork,
         IOptions<AppSettings> settings)
     {
         this.m_userRepository = userRepository;
+        this.m_balanceHistoryRepository = balanceHistoryRepository;
         this.m_unitOfWork = unitOfWork;
         this.m_settings = settings;
     }
@@ -47,6 +51,9 @@ public sealed class UserAppService : IUserService
 
         user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
 
+        BalanceHistory history = BalanceHistory.Create(user.Id, dto.Delta, user.Balance);
+        await this.m_balanceHistoryRepository.AddAsync(history, cancellation);
+
         await this.m_unitOfWork.SaveChangesAsync(cancellation);
     }
 
@@ -71,8 +78,35 @@ public sealed class UserAppService : IUserService
             }
 
             user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
+
+            BalanceHistory history = BalanceHistory.Create(user.Id, dto.Delta, user.Balance);
+            await this.m_balanceHistoryRepository.AddAsync(history, cancellation);
         }
 
         await this.m_unitOfWork.SaveChangesAsync(cancellation);
+    }
+
+    public async Task<IReadOnlyList<BalanceHistoryDto>> GetRecentBalanceHistoryAsync(CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+
+        IReadOnlyList<BalanceHistory> history = await this.m_balanceHistoryRepository.GetRecentAsync(cancellation);
+
+        List<Guid> userIds = history
+            .Select(h => h.UserId)
+            .Distinct()
+            .ToList();
+
+        IReadOnlyList<User> users = await this.m_userRepository.GetByIdsAsync(userIds, cancellation);
+        Dictionary<Guid, string> userNames = users.ToDictionary(u => u.Id, u => u.FullName);
+
+        return history
+            .Select(h => new BalanceHistoryDto(
+                h.UserId,
+                userNames.TryGetValue(h.UserId, out string? name) ? name : "Unknown",
+                h.Delta,
+                h.BalanceAfter,
+                h.ChangedAt))
+            .ToList();
     }
 }

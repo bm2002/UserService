@@ -51,4 +51,11 @@ public sealed class UsersController(IUserService m_userService) : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    [HttpGet("balance/history")]
+    public async Task<IActionResult> GetBalanceHistory(CancellationToken cancellation)
+    {
+        IReadOnlyList<BalanceHistoryDto> history = await m_userService.GetRecentBalanceHistoryAsync(cancellation);
+        return Ok(history);
+    }
 }
