@@ -1,5 +1,6 @@
 ﻿using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -57,40 +58,55 @@ public sealed class OutboxProcessor : BackgroundService
         await using AsyncServiceScope scope = this.m_scopeFactory.CreateAsyncScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        List<OutboxMessage> messages = await db.OutboxMessages
-            .Where(m => m.ProcessedAt == null)
-            .OrderBy(m => m.CreatedAt)
-            .Take(BatchSize)
-            .ToListAsync(cancellation);
-
-        if (messages.Count == 0)
+        await using (IDbContextTransaction tx = await db.Database.BeginTransactionAsync(cancellation))
         {
-            return;
-        }
+            List<OutboxMessage> messages = await db.OutboxMessages
+                    .FromSqlRaw(@$"SELECT *
+                                    FROM outbox_messages
+                                    WHERE processed_at IS NULL AND retry_count < 5
+                                    ORDER BY created_at
+                                    FOR UPDATE SKIP LOCKED
+                                    LIMIT {BatchSize}")
+                    .ToListAsync(cancellation);
 
-        foreach (OutboxMessage message in messages)
-        {
-            try
+            if (messages.Count == 0)
             {
-                await this.m_producer.ProduceAsync(
-                    this.m_kafkaSettings.Topic,
-                    new Message<string, string>
-                    {
-                        Key = message.Id.ToString(),
-                        Value = message.Payload
-                    },
-                    cancellation);
-
-                message.MarkProcessed();
-                this.m_logger.LogInformation("Published outbox message {MessageId} ({EventType})", message.Id, message.EventType);
+                return;
             }
-            catch (Exception ex)
+
+            foreach (OutboxMessage message in messages)
             {
-                this.m_logger.LogError(ex, "Failed to publish outbox message {MessageId}", message.Id);
-                message.MarkFailed(ex.Message);
-            }
-        }
+                try
+                {
+                    await this.m_producer.ProduceAsync(
+                        this.m_kafkaSettings.Topic,
+                        new Message<string, string>
+                        {
+                            Key = message.Id.ToString(),
+                            Value = message.Payload
+                        },
+                        cancellation);
 
-        await db.SaveChangesAsync(cancellation);
+                    message.MarkProcessed();
+                    this.m_logger.LogInformation("Published outbox message {MessageId} ({EventType})", message.Id, message.EventType);
+                }
+                catch (Exception ex)
+                {
+                    this.m_logger.LogError(ex, "Failed to publish outbox message {MessageId}", message.Id);
+                    message.MarkFailed(ex.Message);
+                }
+            }
+
+            await db.SaveChangesAsync(cancellation);
+
+            await tx.CommitAsync(cancellation);
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellation)
+    {
+        this.m_producer.Flush(cancellation);
+
+        await base.StopAsync(cancellation);
     }
 }

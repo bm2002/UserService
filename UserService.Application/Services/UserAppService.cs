@@ -11,6 +11,8 @@ namespace UserService.Application.Services;
 
 public sealed class UserAppService : IUserService
 {
+    private const int RetryCount = 5;
+
     private readonly IUserRepository m_userRepository;
     private readonly IBalanceHistoryRepository m_balanceHistoryRepository;
     private readonly IUnitOfWork m_unitOfWork;
@@ -33,8 +35,6 @@ public sealed class UserAppService : IUserService
 
     public async Task<User> CreateUserAsync(UserDto dto, CancellationToken cancellation)
     {
-        cancellation.ThrowIfCancellationRequested();
-
         User user = User.Create(dto.FullName, dto.BirthDate, dto.BirthPlace);
 
         await this.m_userRepository.AddAsync(user, cancellation);
@@ -45,51 +45,77 @@ public sealed class UserAppService : IUserService
 
     public async Task UpdateBalanceAsync(UpdateBalanceDto dto, CancellationToken cancellation)
     {
-        cancellation.ThrowIfCancellationRequested();
-
-        User? user = await this.m_userRepository.GetByIdAsync(dto.UserId, cancellation);
-
-        if (user is null)
+        for (int i = 0; i < RetryCount; i++)
         {
-            throw new DomainException($"Пользователь {dto.UserId} не найден.");
+            try
+            {
+                User? user = await this.m_userRepository.GetByIdAsync(dto.UserId, cancellation);
+
+                if (user is null)
+                {
+                    throw new DomainException($"Пользователь {dto.UserId} не найден.");
+                }
+
+                user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
+
+                await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
+
+                await this.m_unitOfWork.SaveChangesAsync(cancellation);
+                return;
+            }
+            catch (ConcurrencyConflictException) when (i < RetryCount - 1)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(50 * (i + 1)),
+                    cancellation);
+            }
         }
 
-        user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
-
-        await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
-
-        await this.m_unitOfWork.SaveChangesAsync(cancellation);
+        throw new ConcurrencyConflictException();
     }
 
     public async Task UpdateBalanceBulkAsync(IEnumerable<UpdateBalanceDto> dtos, CancellationToken cancellation)
     {
-        cancellation.ThrowIfCancellationRequested();
-
         List<UpdateBalanceDto> dtoList = dtos.ToList();
-        List<Guid> ids = dtoList.Select(x => x.UserId).Distinct().ToList();
-        IReadOnlyList<User> users = await this.m_userRepository.GetByIdsAsync(ids, cancellation);
+        decimal maxBalance = m_settings.Value.MaxBalance;
 
-        Dictionary<Guid, User> userMap = users.ToDictionary(u => u.Id);
-
-        foreach (UpdateBalanceDto dto in dtoList)
+        for (int i = 0; i < RetryCount; i++)
         {
-            if (!userMap.TryGetValue(dto.UserId, out User? user))
+            try
             {
-                throw new DomainException($"Пользователь {dto.UserId} не найден.");
+                List<Guid> ids = dtoList.Select(x => x.UserId).Distinct().ToList();
+                IReadOnlyList<User> users = await this.m_userRepository.GetByIdsAsync(ids, cancellation);
+
+                Dictionary<Guid, User> userMap = users.ToDictionary(u => u.Id);
+
+                foreach (UpdateBalanceDto dto in dtoList)
+                {
+                    if (!userMap.TryGetValue(dto.UserId, out User? user))
+                    {
+                        throw new DomainException($"Пользователь {dto.UserId} не найден.");
+                    }
+
+                    user.UpdateBalance(dto.Delta, maxBalance);
+
+                    await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
+                }
+
+                await this.m_unitOfWork.SaveChangesAsync(cancellation);
+                return;
             }
-
-            user.UpdateBalance(dto.Delta, this.m_settings.Value.MaxBalance);
-
-            await RegisterBalanceChangeAsync(user, dto.Delta, cancellation);
+            catch (ConcurrencyConflictException) when (i < RetryCount - 1)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(50 * (i + 1)),
+                    cancellation);
+            }
         }
 
-        await this.m_unitOfWork.SaveChangesAsync(cancellation);
+        throw new ConcurrencyConflictException();
     }
 
     public async Task<IReadOnlyList<BalanceHistoryDto>> GetRecentBalanceHistoryAsync(CancellationToken cancellation)
     {
-        cancellation.ThrowIfCancellationRequested();
-
         IReadOnlyList<BalanceHistory> history = await this.m_balanceHistoryRepository.GetRecentAsync(cancellation);
 
         List<Guid> userIds = history
@@ -121,12 +147,11 @@ public sealed class UserAppService : IUserService
                 delta,
                 user.Balance);
 
-        await m_balanceHistoryRepository.AddAsync(
-            history,
-            cancellation);
+        await this.m_balanceHistoryRepository.AddAsync(history, cancellation);
 
-        await m_outboxWriter.WriteAsync(
-            new UserBalanceChangedEvent {
+        await this.m_outboxWriter.WriteAsync(
+            new UserBalanceChangedEvent
+            {
                 UserId = user.Id,
                 FullName = user.FullName,
                 Balance = user.Balance,

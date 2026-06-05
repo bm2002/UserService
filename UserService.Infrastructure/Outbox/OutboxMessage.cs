@@ -2,12 +2,15 @@
 
 public sealed class OutboxMessage
 {
+    private const int MaxRetries = 5;
+
     public Guid Id { get; private set; }
     public string EventType { get; private set; } = string.Empty;
     public string Payload { get; private set; } = string.Empty;
     public DateTime CreatedAt { get; private set; }
     public DateTime? ProcessedAt { get; private set; }
     public string? Error { get; private set; }
+    public int RetryCount { get; private set; }
 
     private OutboxMessage() { }
 
@@ -18,7 +21,8 @@ public sealed class OutboxMessage
             Id = Guid.NewGuid(),
             EventType = eventType,
             Payload = payload,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            RetryCount = 0
         };
     }
 
@@ -30,5 +34,11 @@ public sealed class OutboxMessage
     public void MarkFailed(string error)
     {
         this.Error = error;
+        this.RetryCount++;
+
+        if (this.RetryCount >= MaxRetries)
+        {
+            this.ProcessedAt = DateTime.UtcNow;
+        }
     }
 }

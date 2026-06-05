@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using UserService.Domain.Entities;
+using UserService.Domain.Exceptions;
 using UserService.Domain.Repositories;
 using UserService.Infrastructure.Outbox;
 
@@ -14,6 +15,19 @@ public sealed class AppDbContext : DbContext, IUnitOfWork
     public DbSet<User> Users => Set<User>();
     public DbSet<BalanceHistory> BalanceHistories => Set<BalanceHistory>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            this.ChangeTracker.Clear();
+            throw new ConcurrencyConflictException();
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +121,9 @@ public sealed class AppDbContext : DbContext, IUnitOfWork
 
             entity.Property(o => o.Error)
                   .HasColumnName("error");
+
+            entity.Property(o => o.RetryCount)
+                  .HasColumnName("retry_count");
 
             entity.HasIndex(o => o.ProcessedAt)
                   .HasDatabaseName("ix_outbox_messages_processed_at");
