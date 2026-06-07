@@ -1,0 +1,127 @@
+@page "/create-user"
+@inject IUserApiService UserApiService
+
+<PageTitle>Создать пользователя</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">&#128100; Создать пользователя</h4>
+            </div>
+            <div class="card-body">
+                @if (m_successMessage is not null)
+                {
+                    <div class="alert alert-success alert-dismissible" role="alert">
+                        @m_successMessage
+                        <button type="button" class="btn-close" @onclick="ClearMessages"></button>
+                    </div>
+                }
+                @if (m_errorMessage is not null)
+                {
+                    <div class="alert alert-danger alert-dismissible" role="alert">
+                        @m_errorMessage
+                        <button type="button" class="btn-close" @onclick="ClearMessages"></button>
+                    </div>
+                }
+
+                <EditForm Model="m_form" OnValidSubmit="HandleSubmitAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">ФИО</label>
+                        <InputText class="form-control" @bind-Value="m_form.FullName"
+                                   placeholder="Иванов Иван Иванович" />
+                        <ValidationMessage For="() => m_form.FullName" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Дата рождения</label>
+                        <InputDate class="form-control" @bind-Value="m_form.BirthDate" />
+                        <ValidationMessage For="() => m_form.BirthDate" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Место рождения</label>
+                        <InputText class="form-control" @bind-Value="m_form.BirthPlace"
+                                   placeholder="Москва" />
+                        <ValidationMessage For="() => m_form.BirthPlace" class="text-danger small" />
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" disabled="@m_isLoading">
+                            @if (m_isLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            }
+                            Создать пользователя
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly CreateUserForm m_form = new();
+    private bool m_isLoading;
+    private string? m_successMessage;
+    private string? m_errorMessage;
+
+    private async Task HandleSubmitAsync()
+    {
+        this.m_isLoading = true;
+        this.m_successMessage = null;
+        this.m_errorMessage = null;
+
+        try
+        {
+            UserDto dto = new(this.m_form.FullName!, this.m_form.BirthDate, this.m_form.BirthPlace!);
+            UserResponse? result = await this.UserApiService.CreateUserAsync(dto, CancellationToken.None);
+
+            if (result is not null)
+            {
+                this.m_successMessage = $"Пользователь «{result.FullName}» успешно создан. ID: {result.Id}";
+                this.m_form.Reset();
+            }
+            else
+            {
+                this.m_errorMessage = "Не удалось создать пользователя. Проверьте данные.";
+            }
+        }
+        catch (Exception ex)
+        {
+            this.m_errorMessage = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            this.m_isLoading = false;
+        }
+    }
+
+    private void ClearMessages()
+    {
+        this.m_successMessage = null;
+        this.m_errorMessage = null;
+    }
+
+    private sealed class CreateUserForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "ФИО обязательно")]
+        [System.ComponentModel.DataAnnotations.MinLength(2, ErrorMessage = "ФИО должно содержать минимум 2 символа")]
+        public string? FullName { get; set; }
+
+        public DateOnly BirthDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddYears(-18));
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Место рождения обязательно")]
+        public string? BirthPlace { get; set; }
+
+        public void Reset()
+        {
+            this.FullName = null;
+            this.BirthPlace = null;
+            this.BirthDate = DateOnly.FromDateTime(DateTime.Today.AddYears(-18));
+        }
+    }
+}

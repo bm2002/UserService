@@ -12,6 +12,14 @@ builder.Configuration
     .AddUserSecrets<Program>()
     .AddEnvironmentVariables();
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins(builder.Configuration["AdminUiUrl"] ?? "http://localhost:8080")
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
+
 builder.Services.AddControllers();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -46,6 +54,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseCors();
 app.MapControllers();
 
 await app.RunAsync();

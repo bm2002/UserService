@@ -1,0 +1,106 @@
+﻿@page "/balance-history"
+@inject IUserApiService UserApiService
+
+<PageTitle>История баланса</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">&#128200; История баланса</h4>
+    <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@m_isLoading">
+        @if (m_isLoading)
+        {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+        }
+        Обновить
+    </button>
+</div>
+
+@if (m_isLoading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    </div>
+}
+else if (m_errorMessage is not null)
+{
+    <div class="alert alert-danger alert-dismissible" role="alert">
+        @m_errorMessage
+        <button type="button" class="btn-close" @onclick="DismissError"></button>
+    </div>
+}
+else if (m_history is not null && m_history.Count == 0)
+{
+    <div class="alert alert-info">История операций пуста.</div>
+}
+else if (m_history is not null)
+{
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-striped table-hover mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Пользователь</th>
+                    <th class="d-none d-md-table-cell">ID пользователя</th>
+                    <th class="text-end">Изменение</th>
+                    <th class="text-end">Баланс после</th>
+                    <th class="d-none d-sm-table-cell">Дата и время</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (BalanceHistoryDto entry in m_history)
+                {
+                    <tr>
+                        <td class="fw-semibold">@entry.UserFullName</td>
+                        <td class="d-none d-md-table-cell font-monospace text-muted small">@entry.UserId</td>
+                        <td class="text-end">
+                            <span class="badge @(entry.Delta >= 0 ? "bg-success" : "bg-danger")">
+                                @(entry.Delta >= 0 ? "+" : "")@entry.Delta.ToString("N2") ₽
+                            </span>
+                        </td>
+                        <td class="text-end fw-semibold">@entry.BalanceAfter.ToString("N2") ₽</td>
+                        <td class="d-none d-sm-table-cell text-nowrap text-muted small">
+                            @entry.ChangedAt.ToString("dd.MM.yyyy HH:mm:ss")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="text-muted small mt-2">Всего записей: @m_history.Count</div>
+}
+
+@code {
+    private List<BalanceHistoryDto>? m_history;
+    private bool m_isLoading;
+    private string? m_errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await this.LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        this.m_isLoading = true;
+        this.m_errorMessage = null;
+
+        try
+        {
+            IReadOnlyList<BalanceHistoryDto> data = await this.UserApiService.GetBalanceHistoryAsync(CancellationToken.None);
+            this.m_history = [.. data];
+        }
+        catch (Exception ex)
+        {
+            this.m_errorMessage = $"Ошибка загрузки: {ex.Message}";
+        }
+        finally
+        {
+            this.m_isLoading = false;
+        }
+    }
+
+    private void DismissError()
+    {
+        this.m_errorMessage = null;
+    }
+}

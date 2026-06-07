@@ -1,0 +1,122 @@
+﻿@page "/change-balance"
+@inject IUserApiService UserApiService
+
+<PageTitle>Изменить баланс</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning">
+                <h4 class="mb-0">&#9878; Изменить баланс</h4>
+            </div>
+            <div class="card-body">
+                @if (m_successMessage is not null)
+                {
+                    <div class="alert alert-success alert-dismissible" role="alert">
+                        @m_successMessage
+                        <button type="button" class="btn-close" @onclick="ClearMessages"></button>
+                    </div>
+                }
+                @if (m_errorMessage is not null)
+                {
+                    <div class="alert alert-danger alert-dismissible" role="alert">
+                        @m_errorMessage
+                        <button type="button" class="btn-close" @onclick="ClearMessages"></button>
+                    </div>
+                }
+
+                <EditForm Model="m_form" OnValidSubmit="HandleSubmitAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">ID пользователя</label>
+                        <InputText class="form-control font-monospace"
+                                   @bind-Value="m_form.UserId"
+                                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                        <ValidationMessage For="() => m_form.UserId" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Изменение баланса</label>
+                        <div class="input-group">
+                            <InputNumber class="form-control" @bind-Value="m_form.Delta" />
+                            <span class="input-group-text">&#8381;</span>
+                        </div>
+                        <div class="form-text">
+                            Положительное значение — пополнение, отрицательное — списание.
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-warning btn-lg" disabled="@m_isLoading">
+                            @if (m_isLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            }
+                            Применить изменение
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly ChangeBalanceForm m_form = new();
+    private bool m_isLoading;
+    private string? m_successMessage;
+    private string? m_errorMessage;
+
+    private async Task HandleSubmitAsync()
+    {
+        this.m_isLoading = true;
+        this.m_successMessage = null;
+        this.m_errorMessage = null;
+
+        try
+        {
+            if (!Guid.TryParse(this.m_form.UserId, out Guid userId))
+            {
+                this.m_errorMessage = "Неверный формат ID пользователя.";
+                return;
+            }
+
+            UpdateBalanceDto dto = new(userId, this.m_form.Delta);
+            string? error = await this.UserApiService.UpdateBalanceAsync(dto, CancellationToken.None);
+
+            if (error is null)
+            {
+                decimal delta = this.m_form.Delta;
+                this.m_successMessage = $"Баланс изменён на {(delta >= 0 ? "+" : "")}{delta:N2} ₽.";
+                this.m_form.Delta = 0;
+            }
+            else
+            {
+                this.m_errorMessage = error;
+            }
+        }
+        catch (Exception ex)
+        {
+            this.m_errorMessage = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            this.m_isLoading = false;
+        }
+    }
+
+    private void ClearMessages()
+    {
+        this.m_successMessage = null;
+        this.m_errorMessage = null;
+    }
+
+    private sealed class ChangeBalanceForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "ID пользователя обязателен")]
+        public string? UserId { get; set; }
+
+        public decimal Delta { get; set; }
+    }
+}
